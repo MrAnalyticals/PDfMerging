@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Merger</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2em;
+            text-align: center;
+        }
+        
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 0.9em;
+        }
+        
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            background: #f8f9ff;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+        
+        .upload-area:hover {
+            background: #f0f2ff;
+            border-color: #764ba2;
+        }
+        
+        .upload-area.drag-over {
+            background: #e8ebff;
+            border-color: #764ba2;
+            transform: scale(1.02);
+        }
+        
+        .upload-icon {
+            font-size: 3em;
+            margin-bottom: 10px;
+            color: #667eea;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
+        .file-input-label {
+            display: inline-block;
+            padding: 12px 30px;
+            background: #667eea;
+            color: white;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+        
+        .file-input-label:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .file-list {
+            margin: 20px 0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .file-item {
+            background: #f8f9ff;
+            padding: 12px 15px;
+            margin: 8px 0;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9em;
+        }
+        
+        .file-name {
+            color: #333;
+            font-weight: 500;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            margin-right: 10px;
+        }
+        
+        .file-size {
+            color: #999;
+            font-size: 0.85em;
+        }
+        
+        .merge-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+        
+        .merge-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        }
+        
+        .merge-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .info-text {
+            color: #666;
+            font-size: 0.85em;
+            text-align: center;
+            margin-top: 15px;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 15px;
+            color: #667eea;
+            font-weight: 600;
+        }
+        
+        .loading.show {
+            display: block;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📄 PDF Merger</h1>
+        <p class="subtitle">Merge multiple PDF files into one</p>
+        
+        <form id="uploadForm" method="POST" action="/merge" enctype="multipart/form-data">
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📁</div>
+                <p style="color: #666; margin-bottom: 5px;">Drag and drop PDF files here</p>
+                <p style="color: #999; font-size: 0.9em;">or</p>
+                <label for="pdfFiles" class="file-input-label">Choose Files</label>
+                <input type="file" id="pdfFiles" name="pdf_files" accept=".pdf" multiple>
+            </div>
+            
+            <div class="file-list" id="fileList"></div>
+            
+            <button type="submit" class="merge-btn" id="mergeBtn" disabled>Merge PDFs</button>
+            
+            <p class="info-text">✨ Files will be merged in the order they appear above</p>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Merging your PDFs...</p>
+            </div>
+        </form>
+    </div>
+    
+    <script>
+        const fileInput = document.getElementById('pdfFiles');
+        const uploadArea = document.getElementById('uploadArea');
+        const fileList = document.getElementById('fileList');
+        const mergeBtn = document.getElementById('mergeBtn');
+        const uploadForm = document.getElementById('uploadForm');
+        const loading = document.getElementById('loading');
+        
+        let selectedFiles = [];
+        
+        // Click to upload
+        uploadArea.addEventListener('click', (e) => {
+            if (e.target.tagName !== 'LABEL') {
+                fileInput.click();
+            }
+        });
+        
+        // File selection
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+        
+        // Drag and drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('drag-over');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('drag-over');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('drag-over');
+            handleFiles(e.dataTransfer.files);
+        });
+        
+        function handleFiles(files) {
+            const fileArray = Array.from(files).filter(file => file.type === 'application/pdf');
+            
+            if (fileArray.length === 0) {
+                alert('Please select PDF files only');
+                return;
+            }
+            
+            selectedFiles = fileArray;
+            displayFiles();
+            mergeBtn.disabled = selectedFiles.length < 2;
+        }
+        
+        function displayFiles() {
+            fileList.innerHTML = '';
+            selectedFiles.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.innerHTML = `
+                    <span class="file-name">${index + 1}. ${file.name}</span>
+                    <span class="file-size">${formatFileSize(file.size)}</span>
+                `;
+                fileList.appendChild(fileItem);
+            });
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+        
+        uploadForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            if (selectedFiles.length < 2) {
+                alert('Please select at least 2 PDF files to merge');
+                return;
+            }
+            
+            mergeBtn.disabled = true;
+            loading.classList.add('show');
+            
+            // Create FormData from the form
+            const formData = new FormData();
+            selectedFiles.forEach(file => {
+                formData.append('pdf_files', file);
+            });
+            
+            // Send AJAX request
+            fetch('/merge', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        throw new Error(text || 'Failed to merge PDFs');
+                    });
+                }
+                return response.blob();
+            })
+            .then(blob => {
+                // Create download link
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `merged_pdf_${new Date().getTime()}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                // Reset UI
+                loading.classList.remove('show');
+                mergeBtn.disabled = false;
+                selectedFiles = [];
+                fileList.innerHTML = '';
+                fileInput.value = '';
+                
+                alert('PDFs merged successfully!');
+            })
+            .catch(error => {
+                loading.classList.remove('show');
+                mergeBtn.disabled = false;
+                alert('Error: ' + error.message);
+            });
+        });
+    </script>
+</body>
+</html>
