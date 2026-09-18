@@ -1,16 +1,24 @@
 from flask import Flask, render_template, request, send_file
 from pypdf import PdfWriter
 import os
+import tempfile
 from datetime import datetime
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
-app.config['UPLOAD_FOLDER'] = 'temp_uploads'
 
-# Create temp folder if it doesn't exist
+# Use system temp directory for uploads and merged outputs. When running
+# as a bundled exe the working directory may be inside a read-only
+# extracted archive; writing to the OS temp directory avoids permission
+# and path issues.
+TEMP_DIR = tempfile.gettempdir()
+app.config['UPLOAD_FOLDER'] = os.path.join(TEMP_DIR, 'pdf_merger_uploads')
+MERGED_DIR = os.path.join(TEMP_DIR, 'pdf_merger_merged')
+
+# Create temp folders if they don't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-os.makedirs('merged_pdfs', exist_ok=True)
+os.makedirs(MERGED_DIR, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {'pdf'}
 
@@ -54,20 +62,20 @@ def merge_pdfs():
             # Add pages from this PDF to the writer
             pdf_writer.append(temp_path)
         
-        # Generate output filename with timestamp
+        # Generate output filename with timestamp and write to MERGED_DIR
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_filename = f'merged_pdf_{timestamp}.pdf'
-        output_path = os.path.join('merged_pdfs', output_filename)
+        output_path = os.path.join(MERGED_DIR, output_filename)
         
         # Write the merged PDF
         with open(output_path, 'wb') as output_file:
             pdf_writer.write(output_file)
         
-        # Clean up temporary files
+        # Clean up temporary uploaded files
         for temp_file in temp_files:
             try:
                 os.remove(temp_file)
-            except:
+            except Exception:
                 pass
         
         # Send the merged PDF to user
@@ -78,21 +86,56 @@ def merge_pdfs():
 
 # Clean up old files on startup (optional)
 def cleanup_old_files():
-    """Remove files older than 1 hour"""
+    """Remove files older than 1 hour from temp upload/merged dirs"""
     import time
     current_time = time.time()
-    
-    for folder in ['temp_uploads', 'merged_pdfs']:
+
+    for folder in [app.config['UPLOAD_FOLDER'], MERGED_DIR]:
         if os.path.exists(folder):
             for filename in os.listdir(folder):
                 file_path = os.path.join(folder, filename)
                 if os.path.isfile(file_path):
-                    if current_time - os.path.getmtime(file_path) > 3600:  # 1 hour
-                        try:
+                    try:
+                        if current_time - os.path.getmtime(file_path) > 3600:  # 1 hour
                             os.remove(file_path)
-                        except:
-                            pass
+                    except Exception:
+                        pass
 
 if __name__ == '__main__':
     cleanup_old_files()
-    app.run(debug=True, port=5000)
+    import sys
+    # When packaged into a single-file exe (PyInstaller), the user typically
+    # prefers a normal browser UI instead of a console window. Start the
+    # Flask server in a background thread and open the default browser when
+    # running as a frozen executable. Keep debug/reloader off in that case.
+    is_frozen = getattr(sys, 'frozen', False)
+    if is_frozen:
+        import threading
+        import time
+        import webbrowser
+        import socket
+
+        def run_app():
+            # bind to localhost explicitly
+            app.run(debug=False, use_reloader=False, host='127.0.0.1', port=5000)
+
+        thread = threading.Thread(target=run_app, daemon=True)
+        thread.start()
+
+        # Wait for the server port to become available before opening browser
+        for _ in range(50):
+            try:
+                with socket.create_connection(('127.0.0.1', 5000), timeout=0.5):
+                    break
+            except OSError:
+                time.sleep(0.1)
+
+        try:
+            webbrowser.open('http://127.0.0.1:5000')
+        except Exception:
+            pass
+
+        # Wait for the server thread to finish (runs until process exits)
+        thread.join()
+    else:
+        app.run(debug=True, port=5000)
